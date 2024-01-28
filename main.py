@@ -4,6 +4,23 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 
+# AIDAN DEGOOYER - JAN 28, 2024
+#
+# Works Cited:
+# DATASET: https://www.kaggle.com/datasets/teejmahal20/airline-passenger-satisfaction
+#
+# https://keras.io/guides/training_with_built_in_methods/
+# https://pandas.pydata.org/docs/reference/frame.html#dataframe
+# https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.fillna.html
+# https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.iloc.html
+# https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html
+# https://towardsdatascience.com/what-and-why-behind-fit-transform-vs-transform-in-scikit-learn-78f915cf96fe
+#
+# Debugging: https://datascience.stackexchange.com/questions/67047/loss-being-outputed-as-nan-in-keras-rnn
+#            https://stackoverflow.com/questions/49135929/keras-binary-classification-sigmoid-activation-function
+#
+
+# Load data from csv
 train_data = pd.read_csv("train.csv")
 test_data = pd.read_csv("test.csv")
 
