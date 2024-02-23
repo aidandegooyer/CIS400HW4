@@ -8,6 +8,17 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 
+# HYPERPARAMETERS
+importdata = False
+randomrelabel = False
+epochs = 50
+num_experiments = 10
+population_size = 484
+num_parents = 4
+
+# shouldn't be used other than for testing
+input_dim = 20
+
 
 # AIDAN DEGOOYER - JAN 28, 2024
 #
@@ -40,110 +51,115 @@ def calculate_q(confusion_matrix, b1, b2):
     return q
 
 
+# data parsing begins here======================================================================================
 # Load data from csv
-train_data = pd.read_csv("train.csv")
-test_data = pd.read_csv("test.csv")
+if importdata:
+    train_data = pd.read_csv("train.csv")
+    test_data = pd.read_csv("test.csv")
 
-# Remove id and number
-train_data = train_data.iloc[:, 2:]
-test_data = test_data.iloc[:, 2:]
+    # Remove id and number
+    train_data = train_data.iloc[:, 2:]
+    test_data = test_data.iloc[:, 2:]
 
-# Input missing values with the mean
-train_data.fillna(train_data.mean(), inplace=True)
-test_data.fillna(test_data.mean(), inplace=True)
+    # Input missing values with the mean
+    train_data.fillna(train_data.mean(), inplace=True)
+    test_data.fillna(test_data.mean(), inplace=True)
 
-# set number of data points from each class
-b1 = 1000
-b2 = 3000
+    # set number of data points from each class
+    b1 = 1000
+    b2 = 3000
 
-class_0_train = train_data[train_data['label'] == 0]
-class_1_train = train_data[train_data['label'] == 1]
+    class_0_train = train_data[train_data['label'] == 0]
+    class_1_train = train_data[train_data['label'] == 1]
 
-# Sample b1 data points from one class and b2 from the other
-train_class_0 = resample(class_0_train, n_samples=b1, random_state=42)
-train_class_1 = resample(class_1_train, n_samples=b2, random_state=42)
-train_data = pd.concat([train_class_0, train_class_1])
+    # Sample b1 data points from one class and b2 from the other
+    train_class_0 = resample(class_0_train, n_samples=b1, random_state=42)
+    train_class_1 = resample(class_1_train, n_samples=b2, random_state=42)
+    train_data = pd.concat([train_class_0, train_class_1])
 
-# Randomly relabel 5% of the training data from each class
-num_samples_class_0_relabel = int(0.05 * len(train_class_0))
-num_samples_class_1_relabel = int(0.05 * len(train_class_1))
+    if randomrelabel:
+        # Randomly relabel 5% of the training data from each class
+        num_samples_class_0_relabel = int(0.05 * len(train_class_0))
+        num_samples_class_1_relabel = int(0.05 * len(train_class_1))
 
-selected_indices_class_0_relabel = np.random.choice(train_class_0.index, size=num_samples_class_0_relabel,
-                                                    replace=False)
-selected_indices_class_1_relabel = np.random.choice(train_class_1.index, size=num_samples_class_1_relabel,
-                                                    replace=False)
+        selected_indices_class_0_relabel = np.random.choice(train_class_0.index, size=num_samples_class_0_relabel,
+                                                            replace=False)
+        selected_indices_class_1_relabel = np.random.choice(train_class_1.index, size=num_samples_class_1_relabel,
+                                                            replace=False)
 
-train_data.loc[selected_indices_class_0_relabel, 'label'] = 1
-train_data.loc[selected_indices_class_1_relabel, 'label'] = 0
+        train_data.loc[selected_indices_class_0_relabel, 'label'] = 1
+        train_data.loc[selected_indices_class_1_relabel, 'label'] = 0
 
-# Concatenate the relabeled data with the original data
-train_data = pd.concat([train_class_0, train_class_1])
+        # Concatenate the relabeled data with the original data
+        train_data = pd.concat([train_class_0, train_class_1])
 
-# Separate testing data into two classes based on labels
-class_0_test = test_data[test_data['label'] == 0]
-class_1_test = test_data[test_data['label'] == 1]
+    # Separate testing data into two classes based on labels
+    class_0_test = test_data[test_data['label'] == 0]
+    class_1_test = test_data[test_data['label'] == 1]
 
-# Sample 100 data points from each class for testing
-test_class_0 = class_0_test.sample(n=100, random_state=42)
-test_class_1 = class_1_test.sample(n=100, random_state=42)
-test_data = pd.concat([test_class_0, test_class_1])
+    # Sample 100 data points from each class for testing
+    test_class_0 = class_0_test.sample(n=100, random_state=42)
+    test_class_1 = class_1_test.sample(n=100, random_state=42)
+    test_data = pd.concat([test_class_0, test_class_1])
 
-# Split features and labels for training and testing sets
-X_train = train_data.drop(columns=['label']).values
-y_train = train_data['label'].values
-X_test = test_data.drop(columns=['label']).values
-y_test = test_data['label'].values
+    # Split features and labels for training and testing sets
+    X_train = train_data.drop(columns=['label']).values
+    y_train = train_data['label'].values
+    X_test = test_data.drop(columns=['label']).values
+    y_test = test_data['label'].values
 
-# standardize
-scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
+    # standardize
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
 
-input_dim = X_train.shape[1]
+    input_dim = X_train.shape[1]
+
+
+# END data parsing ================================================================================================
+
+
+# initialize population
+
+def initialize_population(pop_size: int, input_dim):
+    pop_list = []
+    for i in range(pop_size):
+        model = Sequential()
+        model.add(Dense(units=input_dim, activation='sigmoid', input_dim=input_dim))
+        model.add(Dense(units=input_dim * 2, activation='sigmoid'))
+        model.add(Dense(units=1, activation='sigmoid'))
+        optimizer = Adam(clipvalue=0.5)
+        model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+        pop_list.append(model.get_weights())
+    return pop_list
+
+
+# evolve the population, returns a new generation
+def evolve_population(population, mutation_rate):
+    offspring = []
+    for _ in range(4):
+        parent1, parent2 = np.random.choice(population, size=2, replace=False)
+        child = 0.5 * (parent1 + parent2)
+        child = mutate_individual(child, mutation_rate)
+        offspring.append(child)
+    return np.array(offspring)
+
+
+# mutates an individual
+def mutate_individual(individual, mutation_rate):
+    mutated_individual = individual + mutation_rate
+    return mutated_individual
 
 
 # function to train the model
 def train_model(X_train, y_train, X_test, y_test, b1, b2):
-    input_dim = X_train.shape[1]
-    model = Sequential()
-    model.add(Dense(units=input_dim, activation='sigmoid', input_dim=input_dim))
-    model.add(Dense(units=input_dim * 2, activation='sigmoid'))
-    model.add(Dense(units=1, activation='sigmoid'))
-    optimizer = Adam(clipvalue=0.5)
-    model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
-
-    # sets up an array to catch all the q values from each epoch
-    q_train_per_epoch = []
-    q_test_per_epoch = []
-
-    for epoch in range(epochs):
-        # Train model for one epoch
-        history = model.fit(X_train, y_train, epochs=1, batch_size=32, verbose=0)
-
-        # Calculate q values for training and test data at this epoch
-        y_pred_train = np.round(model.predict(X_train)).astype(int)
-        y_pred_test = np.round(model.predict(X_test)).astype(int)
-        confusion_matrix_train = confusion_matrix(y_train, y_pred_train)
-        confusion_matrix_test = confusion_matrix(y_test, y_pred_test)
-
-        q_train = calculate_q(confusion_matrix_train, b1, b2)
-        q_test = calculate_q(confusion_matrix_test, 100, 100)
-
-        train_loss, train_accuracy = model.evaluate(X_train, y_train, verbose=0)
-        test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
-
-        q_train_per_epoch.append(q_train)
-        q_test_per_epoch.append(q_test)
-
-        print(
-            f"Epoch {epoch + 1}: Train Loss = {train_loss:.4f}, Train Accuracy = {train_accuracy:.4f}, Test Loss = {test_loss:.4f}, Test Accuracy = {test_accuracy:.4f}")
-
-    return history, q_train_per_epoch, q_test_per_epoch, model
+    # iterate through models. for each, evaluate it, calculate q and associate with model. Then evolve the population
+    # with 4 parents chosen. Crossover and mutate and run again.
+    return  # what do we want this to return? probably
 
 
-# Repeat experiment
-epochs = 50
-num_experiments = 10
+population_size = input_dim*input_dim
+population = initialize_population(population_size, input_dim)
 
 q_train_avg = np.zeros(epochs)
 q_test_avg = np.zeros(epochs)
