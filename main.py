@@ -142,32 +142,44 @@ def evolve_population(population, mutation_rate):
         child = 0.5 * (parent1 + parent2)
         child = mutate_individual(child, mutation_rate)
         offspring.append(child)
-    return np.array(offspring)
+    return offspring
 
 
 # mutates an individual
 def mutate_individual(individual, mutation_rate):
-    mutated_individual = individual + mutation_rate
+    mutated_individual = individual + mutation_rate # need to change
     return mutated_individual
 
 
 # function to train the model
-def train_model(X_train, y_train, X_test, y_test, b1, b2):
+def train_model(X_train, y_train, X_test, y_test, b1, b2, population):
     # iterate through models. for each, evaluate it, calculate q and associate with model. Then evolve the population
     # with 4 parents chosen. Crossover and mutate and run again.
-    return  # what do we want this to return? probably
+    current_model = Sequential()
+    current_model.add(Dense(units=input_dim, activation='sigmoid', input_dim=input_dim))
+    current_model.add(Dense(units=input_dim * 2, activation='sigmoid'))
+    current_model.add(Dense(units=1, activation='sigmoid'))
+    qs = []
+    for i in range(length(population)):
+        current_model.set_weights(population[i])
+        predictions = current_model.predict(test_data)
+        predicted_labels = (predictions > 0.5).astype(int)  # Assuming binary classification with a threshold of 0.5
+        conf_matrix = confusion_matrix(test_labels, predicted_labels)
+        qs.append(calculate_q(conf_matrix, b1, b2))
+
+
+    return  max(qs)# what do we want this to return? probably
 
 
 population_size = input_dim*input_dim
 population = initialize_population(population_size, input_dim)
 
-q_train_avg = np.zeros(epochs)
-q_test_avg = np.zeros(epochs)
-confusion_matrices_train = []
-confusion_matrices_test = []
+q_avg = np.zeros(epochs)
+confusion_matrices = []
+
 
 for i in range(num_experiments):
-    history, q_train_per_epoch, q_test_per_epoch, trained_model = train_model(X_train, y_train, X_test, y_test, b1, b2)
+    max_q = train_model(X_train, y_train, X_test, y_test, b1, b2, population)
 
     # add the q values from each epoch to a total from all experiments (will be used for averaging later)
     q_train_avg = [a + b for a, b in zip(q_train_avg, q_train_per_epoch)]
