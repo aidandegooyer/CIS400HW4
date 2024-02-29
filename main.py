@@ -1,5 +1,4 @@
 import json
-
 from individual import Individual
 import pandas as pd
 import numpy as np
@@ -9,13 +8,12 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils import resample
 from keras.models import Sequential
 from keras.layers import Dense
-from keras.optimizers import Adam
 
 # HYPERPARAMETERS
 importdata = True
 randomrelabel = False
-generations = 260
-num_experiments = 10
+generations = 2
+num_experiments = 2
 population_size = 22
 num_parents = 4
 mutation_rate = 0.5
@@ -160,7 +158,7 @@ def evaluate_model_conf_matrix(x_test, y_test, model):
     current_model.add(Dense(units=input_dim, activation='sigmoid', input_dim=input_dim))
     current_model.add(Dense(units=input_dim * 2, activation='sigmoid'))
     current_model.add(Dense(units=1, activation='sigmoid'))
-    current_model.set_weights(model)
+    current_model.set_weights(model.get_weights())
     predictions = current_model.predict(x_test)
     rounded_predictions = np.rint(predictions)
     conf_matrix = confusion_matrix(y_test, rounded_predictions)  # needs help
@@ -172,6 +170,8 @@ def evolutionary_strategies(X_train, y_train, mutation_rate, num_generations):
     best_q_values_generations = {1: [], 2: [], 4: [], 8: [], 16: [], 32: [], 64: [], 128: [], 256: []}
     models_with_best_q = [0] * num_experiments
     last_best_q = 9
+    test_q_vals_per_generation = [0] * num_generations
+    testModel = Individual(input_dim)
 
     for experiment_num in range(num_experiments):
         population = initialize_population(population_size, input_dim)
@@ -184,11 +184,11 @@ def evolutionary_strategies(X_train, y_train, mutation_rate, num_generations):
             for individual in offspring:
                 if individual.q < generational_q:
                     generational_q = individual.q
+                    generational_model = individual
 
                 if individual.q < best_q_value_trial:
                     best_q_value_trial = individual.q
-                    print(
-                        f"**********************************************NEW BEST Q: {individual.q}**********************************************")
+                    print(f"\n****NEW BEST Q: {individual.q:.2f}****\n\n----------------------------------------------")
                     models_with_best_q[experiment_num] = individual
 
             if generation in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
@@ -204,36 +204,54 @@ def evolutionary_strategies(X_train, y_train, mutation_rate, num_generations):
                     mutation_rate *= 0.8
                 last_best_q = generational_q
             if mutation_rate > 10: mutation_rate /= 10
-            print(
-                f"**********************************************LAST MUTATION EVAL BEST Q = {last_best_q}**********************************************")
-            print(
-                f"**********************************************THIS GENERATION BEST Q = {generational_q}**********************************************")
-            print(
-                f"**********************************************MUTATION RATE = {mutation_rate}**********************************************")
-            print(
-                f"**********************************************GENERATION NUMBER {generation}**********************************************")
+
+            #evaluate best model of generation
+            testModel.set_weights(generational_model.get_weights())
+            testModel.calculate_q(X_test, y_test, 100, 100)
+            test_q_vals_per_generation[generation] = testModel.q
+
+            print(f"\n\nLAST MUTATION EVAL BEST Q = {last_best_q:.2f}")
+            print(f"THIS GENERATION BEST Q = {generational_q:.2f}")
+            print(f"MUTATION RATE = {mutation_rate:.2f}")
+            print(f"GENERATION NUMBER {generation}")
+            print(f"**TEST Q VAL {testModel.q}")
+            print(f"EXPERIMENT NUMBER {experiment_num + 1}\n\n----------------------------------------------")
 
         best_q_values_trial.append(best_q_value_trial)
-        print(
-            f"**********************************************EXPERIMENT NUMBER {experiment_num + 1} COMPLETE**********************************************")
+        print( f"**EXPERIMENT NUMBER {experiment_num + 1} COMPLETE**")
 
-    return best_q_values_trial, best_q_values_generations, models_with_best_q
+    return best_q_values_trial, best_q_values_generations, models_with_best_q, test_q_vals_per_generation
 
 
 population_size = input_dim
-best_qs_trial, q_selected_gens, models_with_best_q = evolutionary_strategies(X_train, y_train, mutation_rate,
+best_qs_trial, q_selected_gens, models_with_best_q, test_q_vals = evolutionary_strategies(X_train, y_train, mutation_rate,
                                                                              generations)
+
 
 file = open("output.txt", "w")
 
-for model, q in models_with_best_q:
-    conf_matrix = evaluate_model_conf_matrix(X_train, y_train, model)
-    file.write(f"\n{conf_matrix}\n{q}\n")
 
-file.write("---------------------")
+for i, model in enumerate(models_with_best_q):
+    file.write((f"Experiment #{i+1} - Train"))
+    conf_matrix = evaluate_model_conf_matrix(X_train, y_train, model)
+    file.write(f"\n{conf_matrix}\n")
+
+    file.write((f"Experiment #{i + 1} - Test"))
+    conf_matrix = evaluate_model_conf_matrix(X_test, y_test, model)
+    file.write(f"\n{conf_matrix}\n")
+
+
+file.write("---------------------\nbest q's in trials\n")
 
 for item in best_qs_trial:
     file.write(f"\n{item}\n")
+
+file.write("---------------------\naverage test q's per generation\n")
+
+outList = [item / num_experiments for item in test_q_vals]
+for item in outList:
+    file.write(str(item))
+    file.write("\n")
 
 file.write("---------------------\n")
 

@@ -33,7 +33,7 @@ class Individual:
         current_model.add(Dense(units=self.input_dim * 2, activation='sigmoid'))
         current_model.add(Dense(units=1, activation='sigmoid'))
         current_model.set_weights(self.weights)
-        predictions = current_model.predict(x_train)
+        predictions = current_model.predict(x_train, verbose=0)
         rounded_predictions = np.rint(predictions)
         conf_matrix = confusion_matrix(y_train, rounded_predictions)  # needs help
         FP = conf_matrix[0, 1]
@@ -41,7 +41,6 @@ class Individual:
 
         # Calculate q value
         self.q = (FP + FN) / (b1 + b2) + 10 * (max(0, FP / b1 - 0.1) + max(0, FN / b2 - 0.1))
-        print(self.q)
         return
 
     def mutate(self, mutation_rate):
