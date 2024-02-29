@@ -1,5 +1,6 @@
 import json
 
+from individual import Individual
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,8 +18,7 @@ generations = 260
 num_experiments = 10
 population_size = 22
 num_parents = 4
-mutation_rate = 0.1
-
+mutation_rate = 0.5
 
 # shouldn't be used other than for testing
 # input_dim = 20
@@ -42,18 +42,6 @@ mutation_rate = 0.1
 # Debugging: https://datascience.stackexchange.com/questions/67047/loss-being-outputed-as-nan-in-keras-rnn
 #            https://stackoverflow.com/questions/49135929/keras-binary-classification-sigmoid-activation-function
 #
-
-
-# calculates the value of q for an epoch
-def calculate_q(confusion_matrix, b1, b2):
-    # Extract false positives (FP) and false negatives (FN)
-    FP = confusion_matrix[0, 1]
-    FN = confusion_matrix[1, 0]
-
-    # Calculate q value
-    q = (FP + FN) / (b1 + b2) + 10 * (max(0, FP / b1 - 0.1) + max(0, FN / b2 - 0.1))
-
-    return q
 
 
 # data parsing begins here======================================================================================
@@ -134,90 +122,40 @@ if importdata:
 # END data parsing ================================================================================================
 
 
-# initialize population
+# initialize population. Instantiates pop_size number of individuals, and calculates q from the individual.
 
 def initialize_population(pop_size: int, input_dim):
     pop_list = []
-    pop_with_q = []
     for i in range(pop_size):
-        model = Sequential()
-        model.add(Dense(units=input_dim, activation='sigmoid', input_dim=input_dim))
-        model.add(Dense(units=input_dim * 2, activation='sigmoid'))
-        model.add(Dense(units=1, activation='sigmoid'))
-        optimizer = Adam(clipvalue=0.5)
-        model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
-        test = model.get_weights()
-        pop_list.append((model.get_weights()))
-    for individual in pop_list:
-        q = evaluate_model(X_train, y_train, individual)
-        print(q)
-        pop_with_q.append((individual, q))
-    pop_with_q.sort(key=lambda a: a[1])
-    return pop_with_q
+        pop_list.append(Individual(input_dim))
+        pop_list[i].get_random_weights()
+        pop_list[i].calculate_q(X_train, y_train, b1, b2)
+    pop_list.sort(key=lambda a: a.q)  # sorts population list by q value
+    return pop_list
 
 
-# evolve the population, returns a new generation
+# evolve the population, returns a new generation sorted by q
 def evolve_population(population, mutation_rate):
     offspring = []
-    for _ in range(population_size):
-        parent1 = population[np.random.randint(0, high=4)]
-        parent2 = population[np.random.randint(0, high=4)]
+    for j in range(population_size):
+        parent1 = population[np.random.randint(0, high=4)].get_weights()  # get one of the best 4 parents
+        parent2 = population[np.random.randint(0, high=4)].get_weights()
         child = []
-        if isinstance(parent1, tuple):
-            for i in range(len(parent1[0])):
-                temp = np.mean(np.array([parent1[0][i], parent2[0][i]]), axis=0)
-                child.append(temp)
-        else:
-            for i in range(len(parent1)):
-                temp = np.mean(np.array([parent1[i], parent2[i]]), axis=0)
-                child.append(temp)
-        child = mutate_individual(child, mutation_rate)
-        offspring.append(child)
-    pop_with_q = []
-    for individual in offspring:
-        q = evaluate_model(X_train, y_train, individual)
-        print(q)
-        pop_with_q.append((individual, q))
-    pop_with_q.sort(key=lambda a: a[1])
-    return pop_with_q
+        for i in range(len(parent1)):
+            temp = np.mean(np.array([parent1[i], parent2[i]]), axis=0)  # average the parents weights and add  to child
+            child.append(temp)
+        offspring.append(Individual(input_dim))
+        offspring[j].set_weights(child)
+        offspring[j].mutate(mutation_rate)  # mutate child after recombination
+        offspring[j].calculate_q(X_train, y_train, b1, b2)  # run calculations to give child's q
+    # the above line could be run on the whole list in parallel to improve performance. take it out of the loop maybe?
 
-
-mutation_function = lambda x, mutation_rate: x + np.random.normal(loc=0.0, scale=mutation_rate, size=x.shape)
-
-
-# mutates individual
-def mutate_individual(individual, mutation_rate):
-    # for i in range(len(individual)):
-    #     mutation_factor = np.random.normal(loc=0.0, scale=mutation_rate)
-    #     individual[i] += mutation_factor
-    # return individual
-    mutated_weights = []
-    for layer_weights in individual:
-        mutated_layer_weights = [mutation_function(w, mutation_rate) for w in layer_weights]
-        mutated_layer_weights = np.array(mutated_layer_weights)
-        mutated_weights.append(mutated_layer_weights)
-    return mutated_weights
-
-
-# function to train the model
-def evaluate_model(x_test, y_test, model):
-    # iterate through models. for each, evaluate it, calculate q and associate with model. Then evolve the population
-    # with 4 parents chosen. Crossover and mutate and run again.
-    current_model = Sequential()
-    current_model.add(Dense(units=input_dim, activation='sigmoid', input_dim=input_dim))
-    current_model.add(Dense(units=input_dim * 2, activation='sigmoid'))
-    current_model.add(Dense(units=1, activation='sigmoid'))
-    current_model.set_weights(model)
-    predictions = current_model.predict(x_test)
-    rounded_predictions = np.rint(predictions)
-    conf_matrix = confusion_matrix(y_test, rounded_predictions)  # needs help
-    q = calculate_q(conf_matrix, b1, b2)
-    return q
+    offspring.sort(key=lambda a: a.q)
+    return offspring
 
 
 def evaluate_model_conf_matrix(x_test, y_test, model):
-    # iterate through models. for each, evaluate it, calculate q and associate with model. Then evolve the population
-    # with 4 parents chosen. Crossover and mutate and run again.
+    # not really useful except when needing confusion matricies for a report
     current_model = Sequential()
     current_model.add(Dense(units=input_dim, activation='sigmoid', input_dim=input_dim))
     current_model.add(Dense(units=input_dim * 2, activation='sigmoid'))
@@ -243,15 +181,15 @@ def evolutionary_strategies(X_train, y_train, mutation_rate, num_generations):
             generational_q = 9999999
             offspring = evolve_population(population, mutation_rate)
 
-            for individual, q in offspring:
-                if q < generational_q:
-                    generational_q = q
+            for individual in offspring:
+                if individual.q < generational_q:
+                    generational_q = individual.q
 
-                if q < best_q_value_trial:
-                    best_q_value_trial = q
+                if individual.q < best_q_value_trial:
+                    best_q_value_trial = individual.q
                     print(
-                        f"**********************************************NEW BEST Q: {q}**********************************************")
-                    models_with_best_q[experiment_num] = (individual, q)
+                        f"**********************************************NEW BEST Q: {individual.q}**********************************************")
+                    models_with_best_q[experiment_num] = individual
 
             if generation in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
                 best_q_values_generations[generation].append(best_q_value_trial)
