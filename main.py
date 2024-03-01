@@ -12,8 +12,8 @@ from keras.layers import Dense
 # HYPERPARAMETERS
 importdata = True
 randomrelabel = False
-generations = 2
-num_experiments = 2
+generations = 257
+num_experiments = 10
 population_size = 22
 num_parents = 4
 mutation_rate = 0.5
@@ -208,7 +208,7 @@ def evolutionary_strategies(X_train, y_train, mutation_rate, num_generations):
             #evaluate best model of generation
             testModel.set_weights(generational_model.get_weights())
             testModel.calculate_q(X_test, y_test, 100, 100)
-            test_q_vals_per_generation[generation] = testModel.q
+            test_q_vals_per_generation[generation] += testModel.q
 
             print(f"\n\nLAST MUTATION EVAL BEST Q = {last_best_q:.2f}")
             print(f"THIS GENERATION BEST Q = {generational_q:.2f}")
