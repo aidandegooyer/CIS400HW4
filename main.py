@@ -2,6 +2,7 @@ import json
 from individual import Individual
 import pandas as pd
 import numpy as np
+import time
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import StandardScaler
@@ -12,12 +13,13 @@ from keras.layers import Dense
 # HYPERPARAMETERS
 importdata = True
 randomrelabel = False
-generations = 257
-num_experiments = 10
+generations = 10
+num_experiments = 1
 population_size = 22
 num_parents = 4
 mutation_rate = 0.5
 
+start_time = time.time()
 # shouldn't be used other than for testing
 # input_dim = 20
 
@@ -126,7 +128,7 @@ def initialize_population(pop_size: int, input_dim):
     pop_list = []
     for i in range(pop_size):
         pop_list.append(Individual(input_dim))
-        pop_list[i].get_random_weights()
+        pop_list[i].get_weights()
         pop_list[i].calculate_q(X_train, y_train, b1, b2)
     pop_list.sort(key=lambda a: a.q)  # sorts population list by q value
     return pop_list
@@ -226,7 +228,7 @@ def evolutionary_strategies(X_train, y_train, mutation_rate, num_generations):
 population_size = input_dim
 best_qs_trial, q_selected_gens, models_with_best_q, test_q_vals = evolutionary_strategies(X_train, y_train, mutation_rate,
                                                                              generations)
-
+print("--- %s seconds ---" % (time.time() - start_time))
 
 file = open("output.txt", "w")
 
