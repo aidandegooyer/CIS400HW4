@@ -1,9 +1,9 @@
 import json
 from individual import Individual
+from Particle import Particle
 import pandas as pd
 import numpy as np
 import time
-import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import resample
@@ -13,8 +13,8 @@ from keras.layers import Dense
 # HYPERPARAMETERS
 importdata = True
 randomrelabel = False
-generations = 10
-num_experiments = 1
+generations = 260
+num_experiments = 10
 population_size = 22
 num_parents = 4
 mutation_rate = 0.5
@@ -127,32 +127,21 @@ if importdata:
 def initialize_population(pop_size: int, input_dim):
     pop_list = []
     for i in range(pop_size):
-        pop_list.append(Individual(input_dim))
-        pop_list[i].get_weights()
+        pop_list.append(Particle(input_dim))
         pop_list[i].calculate_q(X_train, y_train, b1, b2)
     pop_list.sort(key=lambda a: a.q)  # sorts population list by q value
     return pop_list
 
 
-# evolve the population, returns a new generation sorted by q
-def evolve_population(population, mutation_rate):
-    offspring = []
-    for j in range(population_size):
-        parent1 = population[np.random.randint(0, high=4)].get_weights()  # get one of the best 4 parents
-        parent2 = population[np.random.randint(0, high=4)].get_weights()
-        child = []
-        for i in range(len(parent1)):
-            temp = np.mean(np.array([parent1[i], parent2[i]]), axis=0)  # average the parents weights and add  to child
-            child.append(temp)
-        offspring.append(Individual(input_dim))
-        offspring[j].set_weights(child)
-        offspring[j].mutate(mutation_rate)  # mutate child after recombination
-        offspring[j].calculate_q(X_train, y_train, b1, b2)  # run calculations to give child's q
-    # the above line could be run on the whole list in parallel to improve performance. take it out of the loop maybe?
-
-    offspring.sort(key=lambda a: a.q)
-    return offspring
-
+def update_global_best_position(population):
+    # Update global best position based on the best particle's position
+    global_best_position = None
+    best_fitness = float('inf')
+    for particle in population:
+        if particle.q < best_fitness:
+            best_fitness = particle.q
+            global_best_position = particle.position
+    return global_best_position
 
 def evaluate_model_conf_matrix(x_test, y_test, model):
     # not really useful except when needing confusion matricies for a report
@@ -167,67 +156,74 @@ def evaluate_model_conf_matrix(x_test, y_test, model):
     return conf_matrix
 
 
-def evolutionary_strategies(X_train, y_train, mutation_rate, num_generations):
+def pso_algorithm(x_train, y_train, b1, b2, input_dim, population_size, num_generations):
     best_q_values_trial = []
     best_q_values_generations = {1: [], 2: [], 4: [], 8: [], 16: [], 32: [], 64: [], 128: [], 256: []}
     models_with_best_q = [0] * num_experiments
     last_best_q = 9
     test_q_vals_per_generation = [0] * num_generations
-    testModel = Individual(input_dim)
+    testModel = Particle(input_dim)
+    # Initialize global best position
 
+
+    # PSO parameters
+    inertia_weight = 0.7
+    cognitive_coeff = 1.5
+    social_coeff = 2.0
+
+
+    # Main PSO loop
     for experiment_num in range(num_experiments):
-        population = initialize_population(population_size, input_dim)
         best_q_value_trial = 999999999
+        population = initialize_population(population_size, input_dim)
+        global_best_position = update_global_best_position(population)
+
 
         for generation in range(num_generations):
             generational_q = 9999999
-            offspring = evolve_population(population, mutation_rate)
+            print(f"Generation {generation + 1}/{num_generations}")
 
-            for individual in offspring:
-                if individual.q < generational_q:
-                    generational_q = individual.q
-                    generational_model = individual
+            # Update each particle's velocity and position
+            for particle in population:
+                particle.update_velocity(inertia_weight, cognitive_coeff, social_coeff,
+                                          particle.position, global_best_position)
+                particle.update_position()
+                particle.calculate_q(x_train, y_train, b1, b2)
+                if particle.q < generational_q:
+                    generational_q = particle.q
+                    generational_model = particle
 
-                if individual.q < best_q_value_trial:
-                    best_q_value_trial = individual.q
-                    print(f"\n****NEW BEST Q: {individual.q:.2f}****\n\n----------------------------------------------")
-                    models_with_best_q[experiment_num] = individual
+                if particle.q < best_q_value_trial:
+                    best_q_value_trial = particle.q
+                    print(f"\n****NEW BEST Q: {particle.q:.2f}****\n\n----------------------------------------------")
+                    models_with_best_q[experiment_num] = particle
 
             if generation in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
                 best_q_values_generations[generation].append(best_q_value_trial)
 
-            population = offspring
-
-            # Adapt mutation rate using the modified 1/5 rule
-            if generation % 5 == 0:
-                if abs(generational_q - last_best_q) < 1:
-                    mutation_rate *= 2
-                else:
-                    mutation_rate *= 0.8
-                last_best_q = generational_q
-            if mutation_rate > 10: mutation_rate /= 10
-
-            #evaluate best model of generation
             testModel.set_weights(generational_model.get_weights())
             testModel.calculate_q(X_test, y_test, 100, 100)
             test_q_vals_per_generation[generation] += testModel.q
 
-            print(f"\n\nLAST MUTATION EVAL BEST Q = {last_best_q:.2f}")
             print(f"THIS GENERATION BEST Q = {generational_q:.2f}")
-            print(f"MUTATION RATE = {mutation_rate:.2f}")
             print(f"GENERATION NUMBER {generation}")
             print(f"**TEST Q VAL {testModel.q}")
             print(f"EXPERIMENT NUMBER {experiment_num + 1}\n\n----------------------------------------------")
+            # Update global best position
+            global_best_position = update_global_best_position(population)
 
-        best_q_values_trial.append(best_q_value_trial)
-        print( f"**EXPERIMENT NUMBER {experiment_num + 1} COMPLETE**")
+            # Print best fitness value of the current generation
+            best_fitness = min(p.q for p in population)
+            print(f"Best Fitness: {population[0].q}")
+
 
     return best_q_values_trial, best_q_values_generations, models_with_best_q, test_q_vals_per_generation
 
 
-population_size = input_dim
-best_qs_trial, q_selected_gens, models_with_best_q, test_q_vals = evolutionary_strategies(X_train, y_train, mutation_rate,
-                                                                             generations)
+
+population_size = 30
+best_qs_trial, q_selected_gens, models_with_best_q, test_q_vals = pso_algorithm(X_train, y_train, b1,
+                                                                             b2, input_dim, population_size, generations)
 print("--- %s seconds ---" % (time.time() - start_time))
 
 file = open("output.txt", "w")
